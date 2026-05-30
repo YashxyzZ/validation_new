@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CashApp Remittance Validation — Flow Diagram</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232736;
+    --border: #2e3348;
+    --text: #e2e8f0;
+    --text-dim: #8892b0;
+    --accent: #6366f1;
+    --accent-glow: rgba(99,102,241,.25);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,.15);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,.15);
+    --yellow: #eab308;
+    --yellow-dim: rgba(234,179,8,.15);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,.15);
+    --orange: #f97316;
+    --orange-dim: rgba(249,115,22,.15);
+    --cyan: #06b6d4;
+    --cyan-dim: rgba(6,182,212,.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    padding: 48px 24px 32px;
+    background: linear-gradient(180deg, rgba(99,102,241,.08) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #6366f1, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .header p { color: var(--text-dim); font-size: 1rem; }
+  .version {
+    display: inline-block;
+    background: var(--accent-glow);
+    color: var(--accent);
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: .8rem;
+    font-weight: 600;
+    margin-top: 8px;
+  }
+
+  /* ── Navigation ── */
+  .nav {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px 24px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    background: rgba(15,17,23,.92);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: .85rem;
+    font-weight: 500;
+    transition: all .2s;
+  }
+  .nav-btn:hover, .nav-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--accent-glow);
+  }
+
+  /* ── Container ── */
+  .container { max-width: 1000px; margin: 0 auto; padding: 32px 24px; }
+
+  /* ── Phase ── */
+  .phase {
+    display: none;
+    animation: fadeIn .4s ease;
+  }
+  .phase.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .phase-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .phase-num {
+    background: var(--accent);
+    color: #fff;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .9rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* ── Flow Connector ── */
+  .connector {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .connector .arrow {
+    width: 2px;
+    height: 32px;
+    background: var(--accent);
+    position: relative;
+  }
+  .connector .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid var(--accent);
+  }
+
+  /* ── Flow Node ── */
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 0 auto;
+    max-width: 700px;
+    transition: all .3s;
+    cursor: pointer;
+    position: relative;
+  }
+  .node:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 24px var(--accent-glow);
+    transform: translateY(-2px);
+  }
+  .node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .node-title {
+    font-weight: 600;
+    font-size: 1rem;
+  }
+  .node-badge {
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: .75rem;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-red { background: var(--red-dim); color: var(--red); }
+  .badge-yellow { background: var(--yellow-dim); color: var(--yellow); }
+  .badge-blue { background: var(--blue-dim); color: var(--blue); }
+  .badge-orange { background: var(--orange-dim); color: var(--orange); }
+  .badge-cyan { background: var(--cyan-dim); color: var(--cyan); }
+  .badge-accent { background: var(--accent-glow); color: var(--accent); }
+
+  .node-detail {
+    display: none;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: .9rem;
+    color: var(--text-dim);
+    line-height: 1.8;
+  }
+  .node.expanded .node-detail { display: block; animation: fadeIn .3s ease; }
+  .node-detail code {
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: .82rem;
+    color: var(--accent);
+  }
+  .node-detail ul { padding-left: 20px; }
+  .node-detail li { margin: 4px 0; }
+
+  .expand-icon {
+    color: var(--text-dim);
+    font-size: .8rem;
+    transition: transform .3s;
+  }
+  .node.expanded .expand-icon { transform: rotate(180deg); }
+
+  /* ── Decision Diamond ── */
+  .decision {
+    max-width: 500px;
+    margin: 0 auto;
+    background: var(--surface2);
+    border: 2px solid var(--yellow);
+    border-radius: 12px;
+    padding: 16px 24px;
+    text-align: center;
+    font-weight: 600;
+    font-size: .95rem;
+    box-shadow: 0 0 20px var(--yellow-dim);
+  }
+
+  /* ── Branch ── */
+  .branch {
+    display: flex;
+    gap: 16px;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .branch-side {
+    flex: 1;
+    text-align: center;
+  }
+  .branch-label {
+    font-weight: 700;
+    font-size: .85rem;
+    padding: 4px 12px;
+    border-radius: 6px;
+    display: inline-block;
+    margin-bottom: 8px;
+  }
+  .label-yes { background: var(--green-dim); color: var(--green); }
+  .label-no { background: var(--red-dim); color: var(--red); }
+
+  /* ── Step table ── */
+  .step-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    font-size: .85rem;
+  }
+  .step-table th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .step-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .step-table tr:hover td { background: rgba(99,102,241,.05); }
+
+  /* ── File tag ── */
+  .file-tag {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: .75rem;
+    color: var(--cyan);
+    font-family: monospace;
+    margin-left: 8px;
+  }
+
+  /* ── Result box ── */
+  .result-box {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 12px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: .8rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text-dim);
+    border-left: 3px solid var(--accent);
+  }
+
+  /* ── Endpoint cards ── */
+  .endpoint-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .endpoint-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    transition: all .2s;
+  }
+  .endpoint-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+  .method {
+    font-size: .75rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+  .method-post { background: var(--green-dim); color: var(--green); }
+  .method-get { background: var(--blue-dim); color: var(--blue); }
+  .endpoint-path {
+    font-family: monospace;
+    font-size: .9rem;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .endpoint-desc {
+    font-size: .8rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .8rem;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  @media (max-width: 640px) {
+    .branch { flex-direction: column; }
+    .endpoint-grid { grid-template-columns: 1fr; }
+    .nav { gap: 4px; }
+    .nav-btn { padding: 6px 12px; font-size: .8rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>CashApp Remittance Validation</h1>
+  <p>Complete Flow Diagram — Every step from request to response</p>
+  <span class="version">v3.0.0</span>
+</div>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPhase('overview')">Overview</button>
+  <button class="nav-btn" onclick="showPhase('input')">1. Input</button>
+  <button class="nav-btn" onclick="showPhase('fetch')">2. Oracle Fetch</button>
+  <button class="nav-btn" onclick="showPhase('receipt')">3. Receipt Match</button>
+  <button class="nav-btn" onclick="showPhase('invoice')">4. Invoice Match</button>
+  <button class="nav-btn" onclick="showPhase('output')">5. Output</button>
+  <button class="nav-btn" onclick="showPhase('helpers')">6. Helpers</button>
+  <button class="nav-btn" onclick="showPhase('endpoints')">7. Endpoints</button>
+</nav>
+
+<div class="container">
+
+<!-- ════════════════════════ OVERVIEW ════════════════════════ -->
+<div class="phase active" id="phase-overview">
+  <div class="phase-title"><span class="phase-num">0</span> High-Level Overview</div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Process</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Decision</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Success</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Failure</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div> Cache</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Oracle Call</div>
+  </div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">POST /reports/match — JSON Request</span>
+      <span class="node-badge badge-blue">INPUT</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">Client sends AI-extracted remittance data: customer name, payment reference, date, amount, and invoice lines.</div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Pydantic Validation</span>
+      <span class="node-badge badge-accent">models.py</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">Validates and cleans all fields. Empty strings become <code>null</code>. Strings are stripped. Unknown fields silently ignored.</div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Fetch Oracle Reports (Parallel, Cached)</span>
+      <span class="node-badge badge-orange">ORACLE</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">Two threads fetch receipt + invoice reports simultaneously. Data is cached for 5 minutes. SOAP 1.2 call, base64 CSV response.</div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Receipt Matching: SUB 1 (Unapplied) → SUB 2 (Applied)</span>
+      <span class="node-badge badge-green">MATCH</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <strong>SUB 1 (Cached Unapplied):</strong> No SOAP params sent — Oracle returns only unapplied (UNAPP/UNID) receipts. Run cascading match A1→A7 or B1→B4.<br><br>
+      <strong>SUB 2 (Filtered Applied):</strong> Only triggered if SUB 1 finds no match. Sends a <strong>single</strong> SOAP parameter at a time (Oracle returns empty with multiple). Tries sequentially: <code>P_CUSTOMER_NAME</code> → <code>P_RECEIPT_NUMBER</code> → <code>P_RECEIPT_AMOUNT</code> → <code>P_RECEIPT_DATE</code> until one returns data. Run same matching on results.
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Invoice Matching: SUB 1 (Cached) → SUB 2 (Filtered) per line</span>
+      <span class="node-badge badge-green">MATCH</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <strong>SUB 1 (Cached):</strong> Try matching each invoice against all cached invoice rows. Steps 0→1a→1a-sub→1b→2→3.<br><br>
+      <strong>SUB 2 (Filtered):</strong> Only triggered if SUB 1 fails. Sends a <strong>single</strong> SOAP parameter at a time (sequential fallback): <code>P_CUSTOMER_NAME</code> → <code>P_INVOICE_NUM</code> → <code>P_INVOICE_AMOUNT</code> → <code>P_INVOICE_DATE</code> until one returns data. Run same matching.
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Return MatchedRecord JSON</span>
+      <span class="node-badge badge-blue">OUTPUT</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">Original fields + fusion_* matched fields + match scenario + match reason + no_match_reason. HTTP 200.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════ INPUT ════════════════════════ -->
+<div class="phase" id="phase-input">
+  <div class="phase-title"><span class="phase-num">1</span> Input Validation <span class="file-tag">models.py</span></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">JSON Request Received</span>
+      <span class="node-badge badge-blue">POST</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <div class="result-box">{
+  "customer_name": "7-Eleven",
+  "payment_reference": "REC-12345",
+  "payment_date": "2026-05-15",
+  "header_id": 300000053553942,
+  "total_amount": 5000.00,
+  "confidence_label": null,
+  "confidence_score": 83,
+  "invoices": [ { ... }, { ... } ]
+}</div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">ReceiptRecord Validation</span>
+      <span class="node-badge badge-accent">Pydantic</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <table class="step-table">
+        <tr><th>Field</th><th>Type</th><th>Cleaning Rule</th></tr>
+        <tr><td><code>customer_name</code></td><td>Optional[str]</td><td>Strip whitespace, <code>""</code> → <code>null</code></td></tr>
+        <tr><td><code>payment_reference</code></td><td>Optional[str]</td><td><code>""</code> → <code>null</code></td></tr>
+        <tr><td><code>payment_date</code></td><td>Optional[str]</td><td><code>""</code> → <code>null</code></td></tr>
+        <tr><td><code>header_id</code></td><td>Optional[int]</td><td>Pass-through</td></tr>
+        <tr><td><code>total_amount</code></td><td>Optional[float]</td><td>Pass-through</td></tr>
+        <tr><td><code>confidence_label</code></td><td>Optional[str]</td><td><code>""</code> → <code>null</code></td></tr>
+        <tr><td><code>confidence_score</code></td><td>Optional[int/float]</td><td>Pass-through</td></tr>
+      </table>
+      <br><code>extra="ignore"</code> — unknown fields silently dropped
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">InvoiceItem Validation (per item)</span>
+      <span class="node-badge badge-accent">Pydantic</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <table class="step-table">
+        <tr><th>Field</th><th>Type</th><th>Cleaning Rule</th></tr>
+        <tr><td><code>Line_ID</code></td><td>Optional[int]</td><td>Pass-through</td></tr>
+        <tr><td><code>invoice_number</code></td><td>Optional[str]</td><td>Strip, <code>""</code> → <code>null</code></td></tr>
+        <tr><td><code>invoice_date</code></td><td>Optional[str]</td><td>Strip, <code>""</code> → <code>null</code></td></tr>
+        <tr><td><code>invoice_amount</code></td><td>Optional[float]</td><td>Pass-through</td></tr>
+        <tr><td><code>customer_invoice_number</code></td><td>Optional[str]</td><td>Strip, <code>""</code> → <code>null</code></td></tr>
+        <tr><td><code>store_no</code></td><td>Optional[str]</td><td>Strip, alias <code>storeNo</code></td></tr>
+        <tr><td><code>description</code></td><td>Optional[str]</td><td>Strip, <code>""</code> → <code>null</code></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">Validation passed?</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-no">NO</span>
+      <div class="node" style="cursor:default">
+        <div class="node-header">
+          <span class="node-title">422 Unprocessable Entity</span>
+          <span class="node-badge badge-red">ERROR</span>
+        </div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-yes">YES</span>
+      <div class="node" style="cursor:default">
+        <div class="node-header">
+          <span class="node-title">Proceed to Oracle Fetch →</span>
+          <span class="node-badge badge-green">OK</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ FETCH ════════════════════════ -->
+<div class="phase" id="phase-fetch">
+  <div class="phase-title"><span class="phase-num">2</span> Oracle Data Fetch <span class="file-tag">reports.py</span> <span class="file-tag">client.py</span> <span class="file-tag">cache.py</span></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">ThreadPoolExecutor — 2 Parallel Threads</span>
+      <span class="node-badge badge-accent">main.py</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      Thread 1: <code>get_all_receipt_rows()</code><br>
+      Thread 2: <code>get_all_invoice_rows()</code><br><br>
+      Both run simultaneously to minimize total wait time.
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">Cache fresh? (age &lt; 300 seconds)</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-yes">CACHE HIT</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">Return cached rows</span>
+          <span class="node-badge badge-cyan">CACHED</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">Data stored in <code>_cache</code> dict. Key = <code>"receipt"</code> or <code>"invoice"</code>. Includes row data + timestamp. No Oracle call needed.</div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-no">CACHE MISS / STALE</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">Call Oracle BIP via SOAP</span>
+          <span class="node-badge badge-orange">ORACLE</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">Builds SOAP 1.2 envelope → HTTP POST with Basic Auth → Parse XML response → Extract <code>reportBytes</code> (base64) → Decode to CSV bytes → Store in cache</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">SOAP Call Details</span>
+      <span class="node-badge badge-orange">client.py</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <ul>
+        <li>Builds XML envelope with <code>reportAbsolutePath</code> and optional <code>parameterNameValues</code></li>
+        <li>Both <code>reportAbsolutePath</code> and parameter values escaped via <code>xml.sax.saxutils.escape()</code> (XML injection protection)</li>
+        <li>HTTP POST to <code>ORACLE_BIP_URL</code> with Basic Auth</li>
+        <li>Timeout: 120 seconds</li>
+        <li>HTTP 401 → <code>AuthError</code> → API returns 401</li>
+        <li>HTTP 500 / SOAP Fault → <code>ReportError</code> → API returns 502</li>
+        <li>Success → extract <code>pub:reportBytes</code> → base64 decode → CSV bytes</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">CSV Parsing & Column Normalization</span>
+      <span class="node-badge badge-accent">reports.py</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <ul>
+        <li>Decode bytes as <code>utf-8-sig</code> (handles BOM)</li>
+        <li>Parse with <code>csv.DictReader</code></li>
+        <li>Normalize column names: <code>strip()</code> → <code>UPPER()</code> → spaces → <code>_</code></li>
+        <li>Example: <code>"Bill Customer Name"</code> → <code>"BILL_CUSTOMER_NAME"</code></li>
+        <li>Store in cache with current timestamp</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ RECEIPT ════════════════════════ -->
+<div class="phase" id="phase-receipt">
+  <div class="phase-title"><span class="phase-num">3</span> Receipt Matching <span class="file-tag">matching.py</span> <span class="file-tag">main.py</span></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">SUB 1: Cached Unapplied Receipts</span>
+      <span class="node-badge badge-cyan">CACHED</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      No SOAP parameters sent — Oracle SQL returns only unapplied (UNAPP/UNID) receipts by default.<br>
+      Uses full cached receipt data (no Oracle call). Cached for 5 minutes.<br>
+      Thread-safe cache access via <code>threading.Lock</code>.
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">payment_reference provided?</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-yes">YES → Scenario A</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">A1 → A2 → A3 → A4 → A5 → A6 → A7</span>
+          <span class="node-badge badge-green">CASCADE</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          <table class="step-table">
+            <tr><th>Step</th><th>Criteria</th><th>Rule</th></tr>
+            <tr><td><code>A1</code></td><td>ref substring + amount + customer</td><td>Exactly 1 match → done</td></tr>
+            <tr><td><code>A2</code></td><td>ref substring + customer</td><td>Exactly 1 match → done</td></tr>
+            <tr><td><code>A3</code></td><td>ref substring + amount + date + customer</td><td>Exactly 1 match → done</td></tr>
+            <tr><td><code>A4</code></td><td>customer + amount</td><td>Exactly 1 match → done (skip if no customer)</td></tr>
+            <tr><td><code>A5</code></td><td>customer + date</td><td>Exactly 1 match → done (skip if no customer)</td></tr>
+            <tr><td><code>A6</code></td><td>amount + date</td><td>Exactly 1 match → done (no customer needed)</td></tr>
+            <tr><td><code>A7</code></td><td>amount only</td><td>Exactly 1 match → done (last resort)</td></tr>
+          </table>
+          <br><strong>Substring match:</strong> input <code>25908454</code> matches Oracle's <code>126125908454</code><br>
+          <strong>Amount match:</strong> <code>abs(abs(csv) - abs(input)) &lt; 0.005</code> (handles negatives)<br>
+          <strong>Customer match:</strong> case-insensitive exact match (skipped if null)<br>
+          <strong>A6, A7:</strong> Ensure receipts can be found even when <code>customer_name</code> is null
+        </div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-no">NULL → Scenario B</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">B1 → B2 → B3 → B4</span>
+          <span class="node-badge badge-green">CASCADE</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          <table class="step-table">
+            <tr><th>Step</th><th>Criteria</th><th>Rule</th></tr>
+            <tr><td><code>B1</code></td><td>amount + date + customer</td><td>Exactly 1 match → done</td></tr>
+            <tr><td><code>B2</code></td><td>customer + amount</td><td>Exactly 1 match → done (skip if no customer)</td></tr>
+            <tr><td><code>B3</code></td><td>customer + date</td><td>Exactly 1 match → done (skip if no customer)</td></tr>
+            <tr><td><code>B4</code></td><td>amount only</td><td>Exactly 1 match → done (last resort, no customer needed)</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">SUB 1 found a match?</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-yes">YES</span>
+      <div class="node" style="cursor:default">
+        <div class="node-header">
+          <span class="node-title">Return receipt result (status = UNAPP)</span>
+          <span class="node-badge badge-green">DONE</span>
+        </div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-no">NO → SUB 2</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">SUB 2: Call Oracle with filters</span>
+          <span class="node-badge badge-orange">ORACLE</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          <strong>Sequential SOAP Parameter Fallback</strong> — Oracle returns empty when multiple params are sent together, so only ONE is sent at a time:<br><br>
+          <table class="step-table">
+            <tr><th>Priority</th><th>SOAP Parameter</th><th>Value From</th></tr>
+            <tr><td>1st</td><td><code>P_CUSTOMER_NAME</code></td><td>request.customer_name</td></tr>
+            <tr><td>2nd</td><td><code>P_RECEIPT_NUMBER</code></td><td>request.payment_reference</td></tr>
+            <tr><td>3rd</td><td><code>P_RECEIPT_AMOUNT</code></td><td>request.total_amount</td></tr>
+            <tr><td>4th</td><td><code>P_RECEIPT_DATE</code></td><td>request.payment_date</td></tr>
+          </table>
+          <br>Each param is tried in order. If Oracle returns data rows, stop. If empty, try next param.<br>
+          Skips null values. Run same A1→A7 / B1→B4 cascade on results.<br>
+          <strong>NOT cached</strong> — different filters per request.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">SUB 2 found a match?</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-yes">YES</span>
+      <div class="node" style="cursor:default">
+        <div class="node-header">
+          <span class="node-title">Return receipt result (applied status)</span>
+          <span class="node-badge badge-green">DONE</span>
+        </div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-no">NO</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">No match — return null + combined reasons</span>
+          <span class="node-badge badge-red">NO MATCH</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          All fusion_* fields = <code>null</code><br>
+          <code>receipt_match_scenario</code> = <code>null</code><br>
+          <code>receipt_no_match_reason</code> = <code>"Unapplied: A1: 0 rows...A7: 0 rows | Applied: A1: 0 rows...A7: 0 rows"</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ INVOICE ════════════════════════ -->
+<div class="phase" id="phase-invoice">
+  <div class="phase-title"><span class="phase-num">4</span> Invoice Matching (per line) <span class="file-tag">matching.py</span> <span class="file-tag">main.py</span></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Loop: For each invoice in request.invoices[]</span>
+      <span class="node-badge badge-accent">LOOP</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">Each invoice line is matched independently. SUB 1 uses cached data. SUB 2 fires a filtered Oracle call only if SUB 1 fails for that specific line.</div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" style="border-color:var(--cyan)">
+    <div class="node-header">
+      <span class="node-title">SUB 1: Try all cached invoice rows</span>
+      <span class="node-badge badge-cyan">CACHED</span>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">invoice_number is null?</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-yes">YES → Step 0 only</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">Step 0: date + amount + customer</span>
+          <span class="node-badge badge-yellow">FALLBACK</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          When invoice_number is null, only Step 0 is possible.<br>
+          Requires all three: customer_name, invoice_date, invoice_amount.<br>
+          If any are missing → skipped with reason.<br>
+          If 1 match → done. Otherwise → no match (cannot try Steps 1a-3 without invoice_number).
+        </div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-no">NO → Steps 1a-3</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">Step 1a → 1a-sub → 1b → 2 → 3</span>
+          <span class="node-badge badge-green">CASCADE</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          <table class="step-table">
+            <tr><th>Step</th><th>Criteria</th><th>Rule</th></tr>
+            <tr><td><code>1a</code></td><td>Exact invoice_number</td><td>1 match → done</td></tr>
+            <tr><td><code>1a-sub</code></td><td>Substring invoice_number + amount</td><td>1 match → done</td></tr>
+            <tr><td><code>1b</code></td><td>Exact invoice_number + date + amount</td><td>1 match → done (skip if no date)</td></tr>
+            <tr><td><code>2</code></td><td>customer_invoice_number + date + amount</td><td>1 match → done (skip if missing fields)</td></tr>
+            <tr><td><code>3</code></td><td>Substring invoice_number + date + amount</td><td>1 match → done (skip if no date)</td></tr>
+          </table>
+          <br>Each step requires <strong>exactly 1 match</strong>. Zero or multiple → next step.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">SUB 1 found a match?</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-yes">YES</span>
+      <div class="node" style="cursor:default">
+        <div class="node-header">
+          <span class="node-title">Return fused invoice (with fusion_invoice_type & status)</span>
+          <span class="node-badge badge-green">DONE</span>
+        </div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-no">NO → SUB 2</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">SUB 2: Call Oracle with invoice filters</span>
+          <span class="node-badge badge-orange">ORACLE</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          <strong>Sequential SOAP Parameter Fallback</strong> — one param at a time:<br><br>
+          <table class="step-table">
+            <tr><th>Priority</th><th>SOAP Parameter</th><th>Value From</th></tr>
+            <tr><td>1st</td><td><code>P_CUSTOMER_NAME</code></td><td>request.customer_name</td></tr>
+            <tr><td>2nd</td><td><code>P_INVOICE_NUM</code></td><td>invoice.invoice_number</td></tr>
+            <tr><td>3rd</td><td><code>P_INVOICE_AMOUNT</code></td><td>invoice.invoice_amount</td></tr>
+            <tr><td>4th</td><td><code>P_INVOICE_DATE</code></td><td>invoice.invoice_date</td></tr>
+          </table>
+          <br>Each param tried in order until Oracle returns data rows. Skips null values.<br>
+          Run same Step 0→1a→1a-sub→1b→2→3 cascade on results.<br>
+          <strong>NOT cached</strong> — each invoice line gets its own filtered call.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="decision">SUB 2 found a match?</div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="branch">
+    <div class="branch-side">
+      <span class="branch-label label-yes">YES</span>
+      <div class="node" style="cursor:default">
+        <div class="node-header">
+          <span class="node-title">Return fused invoice</span>
+          <span class="node-badge badge-green">DONE</span>
+        </div>
+      </div>
+    </div>
+    <div class="branch-side">
+      <span class="branch-label label-no">NO</span>
+      <div class="node" onclick="toggleNode(this)">
+        <div class="node-header">
+          <span class="node-title">No match — combined reasons</span>
+          <span class="node-badge badge-red">NO MATCH</span>
+          <span class="expand-icon">&#9660;</span>
+        </div>
+        <div class="node-detail">
+          <code>invoice_no_match_reason</code> = <code>"Cached: Step 1a: 0 rows... | Filtered: Step 1a: 0 rows..."</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ OUTPUT ════════════════════════ -->
+<div class="phase" id="phase-output">
+  <div class="phase-title"><span class="phase-num">5</span> Output Payload <span class="file-tag">models.py</span></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">MatchedRecord — Final JSON Response</span>
+      <span class="node-badge badge-blue">HTTP 200</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <div class="result-box">{
+  // ── Pass-through from input ──
+  "customer_name": "7-Eleven",
+  "payment_reference": "REC-12345",
+  "payment_date": "2026-05-15",
+  "header_id": 300000053553942,
+  "total_amount": 5000.0,
+  "confidence_label": null,
+  "confidence_score": 83,
+
+  // ── Receipt match results ──
+  "fusion_receipt_number": "12345",
+  "fusion_receipt_date": "2026/05/15",
+  "fusion_receipt_amount": 5000.0,
+  "fusion_customer_name": "7-Eleven",
+  "fusion_customer_number": "CUST001",
+  "fusion_currency": "CAD",
+  "fusion_receipt_status": "UNAPP",
+  "fusion_applied_amount": null,
+  "receipt_match_scenario": "A1",
+  "receipt_match_reason": "Matched by payment_reference substring + amount + customer_name",
+  "receipt_no_match_reason": null,
+
+  // ── Invoice match results ──
+  "invoices": [
+    {
+      "Line_ID": 300000053572945,
+      "invoice_number": "INV_001",
+      "invoice_date": "2026-02-09",
+      "invoice_amount": 1000.0,
+      "customer_invoice_number": null,
+      "store_no": null,
+      "description": null,
+      "fusion_invoice_number": "INV_001",
+      "fusion_invoice_date": "2026/02/09",
+      "fusion_invoice_amount": 1000.0,
+      "fusion_invoice_type": "Standard",
+      "fusion_invoice_status": "Open",
+      "invoice_match_scenario": "1a",
+      "invoice_match_reason": "Matched by exact invoice_number",
+      "invoice_no_match_reason": null
+    }
+  ]
+}</div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Match Reason Fields — Mutually Exclusive</span>
+      <span class="node-badge badge-yellow">RULE</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <table class="step-table">
+        <tr><th>Scenario</th><th>match_reason</th><th>no_match_reason</th></tr>
+        <tr><td>Match found</td><td style="color:var(--green)">Explains HOW it matched</td><td><code>null</code></td></tr>
+        <tr><td>No match</td><td><code>null</code></td><td style="color:var(--red)">Lists every step tried and why it failed</td></tr>
+      </table>
+      <br>Same pattern for both receipt and invoice.
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Error Responses</span>
+      <span class="node-badge badge-red">ERRORS</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <table class="step-table">
+        <tr><th>HTTP</th><th>When</th><th>Source</th></tr>
+        <tr><td><code>401</code></td><td>Invalid Oracle credentials</td><td><code>AuthError</code></td></tr>
+        <tr><td><code>422</code></td><td>Invalid request JSON</td><td>Pydantic</td></tr>
+        <tr><td><code>502</code></td><td>Oracle unreachable / SOAP fault / parse failure</td><td><code>ReportError</code></td></tr>
+        <tr><td><code>500</code></td><td>Internal error</td><td>Unhandled exception</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ HELPERS ════════════════════════ -->
+<div class="phase" id="phase-helpers">
+  <div class="phase-title"><span class="phase-num">6</span> Helper Logic <span class="file-tag">matching.py</span></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Date Normalization — _normalize_date()</span>
+      <span class="node-badge badge-accent">DATES</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      All dates normalized to <code>YYYY-MM-DD</code> before comparison.<br><br>
+      <table class="step-table">
+        <tr><th>Input Format</th><th>Example</th><th>Output</th></tr>
+        <tr><td>YYYY-MM-DD</td><td><code>2026-05-15</code></td><td><code>2026-05-15</code></td></tr>
+        <tr><td>YYYY/MM/DD</td><td><code>2026/05/15</code></td><td><code>2026-05-15</code></td></tr>
+        <tr><td>DD-MM-YYYY</td><td><code>15-05-2026</code></td><td><code>2026-05-15</code></td></tr>
+        <tr><td>DD/MM/YYYY</td><td><code>15/05/2026</code></td><td><code>2026-05-15</code></td></tr>
+        <tr><td>MM-DD-YYYY (month&gt;12)</td><td><code>05/13/2025</code></td><td><code>2025-05-13</code></td></tr>
+        <tr><td>DD-Mon-YYYY</td><td><code>15-May-2026</code></td><td><code>2026-05-15</code></td></tr>
+        <tr><td>DD-Mon-YY</td><td><code>15-May-26</code></td><td><code>2026-05-15</code></td></tr>
+        <tr><td>ISO 8601</td><td><code>2026-05-15T00:00:00.000+00:00</code></td><td><code>2026-05-15</code></td></tr>
+      </table>
+      <br><strong>Ambiguity rule:</strong> When both numbers ≤ 12 (e.g. <code>01/02/2025</code>), defaults to DD-MM (Feb 1, not Jan 2).
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Amount Matching — _amounts_match()</span>
+      <span class="node-badge badge-accent">AMOUNTS</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <code>abs(abs(oracle_value) - abs(input_value)) &lt; 0.005</code><br><br>
+      <ul>
+        <li>Commas stripped from Oracle values: <code>"1,000.50"</code> → <code>1000.50</code></li>
+        <li>Absolute values compared — credit memos (negative in Oracle) still match</li>
+        <li>Tolerance: <code>0.005</code> (less than 1 cent) to handle floating point rounding</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Substring Matching</span>
+      <span class="node-badge badge-accent">STRINGS</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      Used in receipt A1-A3 and invoice 1a-sub, 3.<br><br>
+      Checks if the input string is <strong>contained within</strong> the Oracle value:<br>
+      <code>"25908454" in "126125908454"</code> → <code>True</code><br><br>
+      Handles Oracle's prefixed transaction numbers where AI extracts only the suffix.
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Customer Matching</span>
+      <span class="node-badge badge-accent">CUSTOMER</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <ul>
+        <li>Case-insensitive: both sides <code>.strip().lower()</code></li>
+        <li><strong>Exact match only</strong> — not substring</li>
+        <li>If <code>customer_name</code> is null/empty in request → customer filter is <strong>skipped</strong> (not enforced)</li>
+        <li>Steps A4, A5, B2, B3 are skipped entirely if customer is null</li>
+        <li>Steps A6, A7, B4 do <strong>not</strong> require customer — ensure matches even when customer is null</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">Cache Logic</span>
+      <span class="node-badge badge-cyan">cache.py</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <ul>
+        <li>In-memory Python dict: <code>_cache = {}</code></li>
+        <li><strong>Thread-safe:</strong> all access guarded by <code>threading.Lock</code></li>
+        <li>Keys: <code>"receipt"</code>, <code>"invoice"</code></li>
+        <li>Value: <code>{"rows": [...], "timestamp": float}</code></li>
+        <li>TTL: 300 seconds (5 minutes) — configurable via <code>CACHE_TTL_SECONDS</code></li>
+        <li>Cache HIT: age &lt; TTL → return rows</li>
+        <li>Cache STALE: age ≥ TTL → delete entry, fetch fresh</li>
+        <li>Cache MISS: no entry → fetch fresh, store with timestamp</li>
+        <li>SUB 2 calls (filtered) are <strong>never cached</strong></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════ ENDPOINTS ════════════════════════ -->
+<div class="phase" id="phase-endpoints">
+  <div class="phase-title"><span class="phase-num">7</span> All API Endpoints <span class="file-tag">main.py</span></div>
+
+  <div class="endpoint-grid">
+    <div class="endpoint-card">
+      <span class="method method-post">POST</span>
+      <div class="endpoint-path">/reports/match</div>
+      <div class="endpoint-desc">Validate a single remittance against Oracle Fusion. Two-step cascading match.</div>
+    </div>
+    <div class="endpoint-card">
+      <span class="method method-get">GET</span>
+      <div class="endpoint-path">/reports/search</div>
+      <div class="endpoint-desc">Search cached data by customer name or invoice number. Returns up to 10 results.</div>
+    </div>
+    <div class="endpoint-card">
+      <span class="method method-get">GET</span>
+      <div class="endpoint-path">/reports/download/receipt</div>
+      <div class="endpoint-desc">Download full receipt report as CSV file.</div>
+    </div>
+    <div class="endpoint-card">
+      <span class="method method-get">GET</span>
+      <div class="endpoint-path">/reports/download/invoice</div>
+      <div class="endpoint-desc">Download full invoice report as CSV file.</div>
+    </div>
+    <div class="endpoint-card">
+      <span class="method method-get">GET</span>
+      <div class="endpoint-path">/cache/info</div>
+      <div class="endpoint-desc">Check cache state: age, row counts, freshness.</div>
+    </div>
+    <div class="endpoint-card">
+      <span class="method method-post">POST</span>
+      <div class="endpoint-path">/cache/clear</div>
+      <div class="endpoint-desc">Force-clear the in-memory cache. Next request fetches fresh from Oracle.</div>
+    </div>
+    <div class="endpoint-card">
+      <span class="method method-get">GET</span>
+      <div class="endpoint-path">/health</div>
+      <div class="endpoint-desc">Health check. Returns {"status": "ok"}.</div>
+    </div>
+  </div>
+
+  <div style="margin-top:32px">
+  <div class="node" onclick="toggleNode(this)">
+    <div class="node-header">
+      <span class="node-title">File Structure</span>
+      <span class="node-badge badge-accent">PROJECT</span>
+      <span class="expand-icon">&#9660;</span>
+    </div>
+    <div class="node-detail">
+      <table class="step-table">
+        <tr><th>File</th><th>Purpose</th></tr>
+        <tr><td><code>main.py</code></td><td>FastAPI app, all endpoints, two-step orchestration</td></tr>
+        <tr><td><code>models.py</code></td><td>Pydantic input/output models with validation</td></tr>
+        <tr><td><code>matching.py</code></td><td>Receipt matching (A1-A7/B1-B4) + Invoice matching (Steps 0-3)</td></tr>
+        <tr><td><code>reports.py</code></td><td>Report fetching, CSV parsing, sequential SOAP param fallback</td></tr>
+        <tr><td><code>client.py</code></td><td>Oracle BIP SOAP client with XML escaping (report_path + params)</td></tr>
+        <tr><td><code>cache.py</code></td><td>Thread-safe in-memory cache with 5-minute TTL</td></tr>
+        <tr><td><code>config.py</code></td><td>Configuration loader from .env</td></tr>
+        <tr><td><code>.env</code></td><td>Oracle credentials, report paths, cache settings</td></tr>
+        <tr><td><code>requirements.txt</code></td><td>fastapi, uvicorn, pydantic, requests, python-dotenv</td></tr>
+      </table>
+    </div>
+  </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+function showPhase(id) {
+  document.querySelectorAll('.phase').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('phase-' + id).classList.add('active');
+  event.target.classList.add('active');
+  window.scrollTo({ top: 200, behavior: 'smooth' });
+}
+
+function toggleNode(el) {
+  el.classList.toggle('expanded');
+}
+</script>
+
+</body>
+</html>

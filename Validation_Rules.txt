@@ -1,0 +1,761 @@
+# CashApp Remittance Validation Rules (v3.0.0)
+# Generated from codebase — 31 May 2026
+
+---
+
+## 1. Configuration & Environment Variables (`config.py` / `.env`)
+
+All settings are loaded from a `.env` file via `python-dotenv`.
+
+| Variable               | Default                                                                                  | Description                                |
+| ---------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `ORACLE_BIP_URL`       | `https://your-instance.fa.us6.oraclecloud.com/xmlpserver/services/ExternalReportWSSService` | Oracle BIP SOAP endpoint URL               |
+| `ORACLE_USERNAME`      | `""` (empty)                                                                             | Oracle BIP username (HTTP Basic Auth)       |
+| `ORACLE_PASSWORD`      | `""` (empty)                                                                             | Oracle BIP password (HTTP Basic Auth)       |
+| `RECEIPT_REPORT_PATH`  | `/Custom/Finacials/Receivables/Upgrade/Get Receipt Details Report.xdo`                   | Oracle BIP path to receipt report           |
+| `INVOICE_REPORT_PATH`  | `/Custom/Finacials/Receivable Transactions/Upgrade/Get Invoice Details Report.xdo`       | Oracle BIP path to invoice report           |
+| `CACHE_TTL_SECONDS`    | `300` (5 minutes)                                                                        | How long cached Oracle data stays fresh     |
+| `AMOUNT_TOLERANCE`     | `0.005` (hardcoded)                                                                      | Max difference for amount matching          |
+
+---
+
+## 2. Input Validation (`models.py`)
+
+### InvoiceItem
+
+| Field                     | Type             | Required | Rules                                                                 |
+| ------------------------- | ---------------- | -------- | --------------------------------------------------------------------- |
+| `Line_ID`                 | `int`            | No       | Passed through to output                                              |
+| `invoice_number`          | `str`            | No       | Empty string `""` auto-converts to `null`. Non-empty values are stripped of whitespace |
+| `invoice_date`            | `str`            | No       | Empty string auto-converts to `null`. Stripped                        |
+| `invoice_amount`          | `float`          | No       | Float value                                                           |
+| `customer_invoice_number` | `str`            | No       | Empty string auto-converts to `null`. Stripped                        |
+| `store_no` / `storeNo`   | `str`            | No       | Accepts both snake_case and camelCase (via Pydantic alias). Empty string auto-converts to `null`. Stripped |
+| `description`             | `str`            | No       | Empty string auto-converts to `null`. Stripped                        |
+
+- Unknown fields are silently ignored (`extra="ignore"`)
+- Validator `empty_to_none` runs on: `invoice_number`, `invoice_date`, `customer_invoice_number`, `store_no`, `description`
+  - `""` -> `None`
+  - Non-null, non-empty -> `str(v).strip()`
+
+### ReceiptRecord
+
+| Field                | Type             | Required | Rules                                                                  |
+| -------------------- | ---------------- | -------- | ---------------------------------------------------------------------- |
+| `customer_name`      | `str`            | No       | Empty string OR whitespace-only auto-converts to `null`. Otherwise stripped |
+| `payment_reference`  | `str`            | No       | Empty string `""` auto-converts to `null`                              |
+| `payment_date`       | `str`            | No       | Empty string `""` auto-converts to `null`                              |
+| `header_id`          | `int`            | No       | Integer, passed through to output                                      |
+| `total_amount`       | `float`          | No       | Float value                                                            |
+| `confidence_label`   | `str`            | No       | Empty string `""` auto-converts to `null`                              |
+| `confidence_score`   | `int` or `float` | No       | e.g., `80` or `85.5`                                                   |
+| `invoices`           | `list`           | No       | List of `InvoiceItem` objects. Defaults to `[]`                        |
+
+- Unknown fields are silently ignored (`extra="ignore"`)
+- `customer_name` uses a separate validator `clean_customer_name` that also catches whitespace-only values
+- `payment_reference`, `payment_date`, `confidence_label` use `empty_to_none` (only converts `""` to `None`, no stripping)
+
+---
+
+## 3. Output Models (`models.py`)
+
+### FusedInvoiceItem (per invoice line in response)
+
+| Field                     | Source                                                          |
+| ------------------------- | --------------------------------------------------------------- |
+| `Line_ID`                 | Passed through from input                                       |
+| `invoice_number`          | Passed through from input                                       |
+| `invoice_date`            | Passed through from input                                       |
+| `invoice_amount`          | Passed through from input                                       |
+| `customer_invoice_number` | Passed through from input                                       |
+| `store_no`                | Passed through from input                                       |
+| `description`             | Passed through from input                                       |
+| `fusion_invoice_number`   | Matched row's `TRANSACTION_NUMBER` (stripped) -- or `null`      |
+| `fusion_invoice_date`     | Matched row's `TRANSACTION_DATE` (formatted `YYYY/MM/DD`) -- or `null` |
+| `fusion_invoice_amount`   | Matched row's `TOTAL_AMOUNTS` (parsed as float) -- or `null`   |
+| `fusion_invoice_type`     | Matched row's `INVOICE_TYPE` (stripped) -- or `null`            |
+| `fusion_invoice_status`   | Matched row's `INVOICE_STATUS` (stripped) -- or `null`          |
+| `invoice_match_scenario`  | Which step matched: `"0"`, `"1a"`, `"1a-sub"`, `"1b"`, `"2"`, `"3"` -- or `null` |
+| `invoice_match_reason`    | How the invoice matched -- or `null` if no match                |
+| `invoice_no_match_reason` | Semicolon-separated explanation when all steps fail -- or `null` if matched |
+
+### MatchedRecord (main response)
+
+| Field                     | Source                                                          |
+| ------------------------- | --------------------------------------------------------------- |
+| `customer_name`           | Passed through from input                                       |
+| `payment_reference`       | Passed through from input                                       |
+| `payment_date`            | Passed through from input                                       |
+| `header_id`               | Passed through from input                                       |
+| `total_amount`            | Passed through from input                                       |
+| `confidence_label`        | Passed through from input                                       |
+| `confidence_score`        | Passed through from input                                       |
+| `fusion_receipt_number`   | Matched row's `RECEIPT_NUMBER` (stripped)                        |
+| `fusion_receipt_date`     | Matched row's `RECEIPT_DATE` (formatted `YYYY/MM/DD`)           |
+| `fusion_receipt_amount`   | Matched row's `RECEIPT_AMOUNT` (parsed as float)                |
+| `fusion_customer_name`    | Matched row's `BILL_CUSTOMER_NAME` (stripped)                   |
+| `fusion_customer_number`  | Matched row's `BILL_CUSTOMER_NUMBER` (stripped)                 |
+| `fusion_currency`         | Matched row's `CURRENCY` (stripped)                             |
+| `fusion_receipt_status`   | Matched row's `RECEIPT_STATUS_CODE` (stripped)                  |
+| `fusion_applied_amount`   | Matched row's `APPLIED_AMOUNT` (parsed as float)                |
+| `receipt_match_scenario`  | Which step matched: `"A1"`-`"A7"` or `"B1"`-`"B4"` -- or `null` |
+| `receipt_match_reason`    | How the receipt matched -- or `null` if no match                |
+| `receipt_no_match_reason` | Semicolon-separated explanation when all steps fail -- or `null` if matched |
+| `invoices`                | List of `FusedInvoiceItem` objects                              |
+
+---
+
+## 4. Two-Step Cascading Flow (SUB 1 -> SUB 2)
+
+Both receipt and invoice matching use a two-step cascading approach:
+
+### SUB 1 — Cached Unapplied Data (no SOAP params)
+
+- Oracle SQL returns only **UNAPP/UNID** status receipts when no parameters are sent
+- Data is cached in memory for 5 minutes
+- Receipt and invoice reports are fetched **in parallel** (ThreadPoolExecutor, 2 workers)
+
+### SUB 2 — Filtered Applied Data (single SOAP param)
+
+- Triggered only when SUB 1 finds **no match**
+- Oracle SQL returns only **APP/REV** status receipts when parameters are sent
+- Sends **one SOAP parameter at a time** (Oracle returns empty when multiple params are sent)
+- Tries parameters sequentially until one returns data rows:
+
+**Receipt SUB 2 fallback order:**
+```
+1. P_CUSTOMER_NAME  --> if data rows returned, use them
+2. P_RECEIPT_NUMBER  --> if data rows returned, use them
+3. P_RECEIPT_AMOUNT  --> if data rows returned, use them
+4. P_RECEIPT_DATE    --> if data rows returned, use them
+```
+
+**Invoice SUB 2 fallback order:**
+```
+1. P_CUSTOMER_NAME  --> if data rows returned, use them
+2. P_INVOICE_NUM    --> if data rows returned, use them
+3. P_INVOICE_AMOUNT --> if data rows returned, use them
+4. P_INVOICE_DATE   --> if data rows returned, use them
+```
+
+Data row validation: checks that the returned rows contain actual data columns (e.g., `RECEIPT_NUMBER` or `TRANSACTION_NUMBER`), not just parameter echo columns.
+
+### No Match Reason Format (Two-Step)
+
+When both SUB 1 and SUB 2 fail, the no_match_reason combines both:
+```
+"Unapplied: A1: 0 rows matched (...); A2: ... | Applied: A1: 0 rows matched (...); A2: ..."
+```
+
+For invoices:
+```
+"Cached: Step 1a: 0 rows matched (...); ... | Filtered: Step 1a: 0 rows matched (...); ..."
+```
+
+---
+
+## 5. Cache Decision (`cache.py`)
+
+Decides whether to fetch fresh data from Oracle or use cached data from memory.
+
+```
+Request comes in
+     |
+     v
+Has SOAP filter params?
+     |
+     +-- YES --> Skip cache entirely --> Call Oracle directly
+     |
+     +-- NO  --> Check in-memory cache (_cache dict)
+                  |
+                  +-- No entry found
+                  |   --> Cache MISS --> Fetch from Oracle
+                  |
+                  +-- Entry found but age >= CACHE_TTL_SECONDS (default 300s)
+                  |   --> STALE --> Delete old entry --> Fetch from Oracle
+                  |
+                  +-- Entry found and age < CACHE_TTL_SECONDS
+                      --> Cache HIT --> Return cached data (instant)
+```
+
+### Cache Rules
+
+- **Filtered requests** (with SOAP params) are **never cached**
+- **Unfiltered requests** (SUB 1) are cached for **5 minutes** (300 seconds by default, configurable via `CACHE_TTL_SECONDS`)
+- Age is calculated using `time.time()` at storage vs current time
+- After a fresh Oracle fetch (unfiltered): save rows + timestamp to `_cache` dict
+- Stale entries are deleted before re-fetching
+- Cache key is `"receipt"` or `"invoice"`
+
+### Cache Functions
+
+| Function       | Description                                                        |
+| -------------- | ------------------------------------------------------------------ |
+| `get_cached`   | Returns rows if fresh, `None` if stale/missing (deletes stale)     |
+| `set_cache`    | Stores rows + current timestamp                                    |
+| `clear_cache`  | Wipes all cached entries                                           |
+| `cache_info`   | Returns per-key dict with `rows` count, `age_seconds`, and `fresh` boolean |
+
+---
+
+## 6. Oracle BIP SOAP Client (`client.py`)
+
+### SOAP Configuration
+
+| Setting                     | Value                                                       |
+| --------------------------- | ----------------------------------------------------------- |
+| SOAP version                | 1.2 (`http://www.w3.org/2003/05/soap-envelope`)             |
+| Service namespace           | `http://xmlns.oracle.com/oxp/service/PublicReportService`   |
+| Operation                   | `runReport`                                                 |
+| Content-Type                | `application/soap+xml; charset=utf-8`                       |
+| Authentication              | HTTP Basic Auth (username + password)                       |
+| Timeout                     | 120 seconds                                                 |
+| `flattenXML`                | `true`                                                      |
+| `sizeOfDataChunkDownload`   | `-1` (no chunking -- full report in one response)           |
+
+### SOAP Filter Parameters
+
+Parameters are sent **one at a time** (Oracle BIP returns empty when multiple params are combined).
+
+**Receipt report parameters:**
+
+| Parameter           | Source                        | When Used                              |
+| ------------------- | ----------------------------- | -------------------------------------- |
+| `P_CUSTOMER_NAME`   | `record.customer_name`        | Priority 1 (if not null)               |
+| `P_RECEIPT_NUMBER`  | `record.payment_reference`    | Priority 2 fallback                    |
+| `P_RECEIPT_AMOUNT`  | `record.total_amount`         | Priority 3 fallback                    |
+| `P_RECEIPT_DATE`    | `record.payment_date`         | Priority 4 fallback                    |
+
+**Invoice report parameters:**
+
+| Parameter           | Source                        | When Used                              |
+| ------------------- | ----------------------------- | -------------------------------------- |
+| `P_CUSTOMER_NAME`   | `record.customer_name`        | Priority 1 (if not null)               |
+| `P_INVOICE_NUM`     | `invoice.invoice_number`      | Priority 2 fallback                    |
+| `P_INVOICE_AMOUNT`  | `invoice.invoice_amount`      | Priority 3 fallback                    |
+| `P_INVOICE_DATE`    | `invoice.invoice_date`        | Priority 4 fallback                    |
+
+If no parameters are provided, Oracle returns the full unfiltered report (SUB 1).
+
+### XML Injection Protection
+
+All SOAP parameter values are escaped using `xml.sax.saxutils.escape()` before insertion into the XML envelope. This prevents characters like `<`, `>`, `&` from breaking or manipulating the SOAP structure.
+
+### Error Handling Order
+
+The errors are checked in this exact sequence:
+
+| # | Condition                                                                       | Exception Type |
+| - | ------------------------------------------------------------------------------- | -------------- |
+| 1 | `requests.RequestException` (network failure, DNS, connection refused)          | `ReportError`  |
+| 2 | HTTP 401                                                                        | `AuthError`    |
+| 3 | HTTP non-200 (any other status code)                                            | `ReportError`  |
+| 4 | XML parse failure on response body                                              | `ReportError`  |
+| 5 | SOAP fault containing `"Authentication"` or `"Invalid username or password"`    | `AuthError`    |
+| 6 | Any other SOAP fault                                                            | `ReportError`  |
+| 7 | Missing `<reportBytes>` element or empty text                                   | `ReportError`  |
+| 8 | Failed base64 decode of `<reportBytes>`                                         | `ReportError`  |
+
+SOAP fault detection checks two paths:
+- `soap:Fault/soap:Reason/soap:Text` (SOAP 1.2 standard)
+- `soap:Fault/faultstring` (fallback)
+
+### Return Value
+
+Raw CSV bytes (base64-decoded from `<reportBytes>`).
+
+---
+
+## 7. Report Fetching & CSV Parsing (`reports.py`)
+
+### Data Flow
+
+```
+get_all_receipt_rows() / get_all_invoice_rows()    [SUB 1 - cached]
+get_filtered_receipt_rows() / get_filtered_invoice_rows()  [SUB 2 - not cached]
+     |
+     v
+_fetch_rows(report_path, cache_key, params)
+     |
+     +-- 1. Check cache (only if cache_key set and no params)
+     |       |-- HIT --> return cached rows
+     |       |-- MISS/STALE --> continue
+     |
+     +-- 2. Call Oracle BIP via SOAP --> get CSV bytes
+     |
+     +-- 3. Parse CSV bytes --> normalize rows
+     |
+     +-- 4. Cache result (only if cache_key set and no params)
+     |
+     +-- 5. Return rows
+```
+
+### SUB 2 Filtered Helpers — Sequential Parameter Fallback
+
+When `customer_name` is null, the filtered helpers try the next available parameter:
+
+```
+get_filtered_receipt_rows(customer_name, amount, receipt_num, receipt_date):
+    candidates = [P_CUSTOMER_NAME, P_RECEIPT_NUMBER, P_RECEIPT_AMOUNT, P_RECEIPT_DATE]
+    for each candidate (if value not null):
+        call Oracle with that single param
+        if Oracle returns rows with actual data (RECEIPT_NUMBER column exists):
+            return those rows
+        else:
+            try next candidate
+    return []
+```
+
+Same pattern for `get_filtered_invoice_rows`.
+
+### CSV Column Normalization (`_normalize_key`)
+
+Oracle CSV headers are normalized on parse:
+- Strip whitespace
+- Convert to UPPERCASE
+- Replace spaces with underscores
+
+Examples:
+- `Receipt Number` --> `RECEIPT_NUMBER`
+- `Bill Customer Name` --> `BILL_CUSTOMER_NAME`
+- `Transaction Date` --> `TRANSACTION_DATE`
+- `Total Amounts` --> `TOTAL_AMOUNTS`
+- `Invoice Type` --> `INVOICE_TYPE`
+- `Invoice Status` --> `INVOICE_STATUS`
+
+### CSV Parsing
+
+- Encoding: `utf-8-sig` (handles BOM)
+- Parser: Python `csv.DictReader`
+- Each row becomes a dict with normalized keys
+
+---
+
+## 8. Receipt Matching (`matching.py`) -- Rule 2
+
+**Goal:** Find receipt fusion fields from Oracle receipt report.
+
+**Runs FIRST** (before invoice matching).
+
+### Matching Criteria Key
+
+- **"ref substring"** = `payment_reference.lower()` appears INSIDE `RECEIPT_NUMBER.strip().lower()` (substring search)
+- **"amount"** = `|abs(RECEIPT_AMOUNT) - abs(total_amount)| < 0.005` (see Section 11)
+- **"customer_name"** = `BILL_CUSTOMER_NAME.strip().lower() == customer_name.strip().lower()` (exact, case-insensitive)
+- **"date"** = `RECEIPT_DATE` normalized == `payment_date` normalized (see Section 12)
+
+### A] payment_reference is NOT null
+
+```
+A1: ref substring + amount + (customer_name if not null)
+    --> 1 match: return "A1"
+    --> 0 or 2+: go to A2
+
+A2: ref substring + (customer_name if not null)
+    --> 1 match: return "A2"
+    --> 0 or 2+: go to A3
+
+A3: ref substring + amount + date + (customer_name if not null)
+    --> 1 match: return "A3"
+    --> 0 or 2+: go to A4
+
+A4: customer_name + amount
+    --> SKIPPED if customer_name is null
+    --> 1 match: return "A4"
+    --> 0 or 2+: go to A5
+
+A5: customer_name + date
+    --> SKIPPED if customer_name is null
+    --> 1 match: return "A5"
+    --> 0 or 2+: go to A6
+
+A6: amount + date (no customer_name needed)
+    --> SKIPPED if total_amount is null or payment_date is null
+    --> 1 match: return "A6"
+    --> 0 or 2+: go to A7
+
+A7: amount only (last resort, no customer_name needed)
+    --> SKIPPED if total_amount is null
+    --> 1 match: return "A7"
+    --> 0 or 2+: NO MATCH (set receipt_no_match_reason)
+```
+
+### B] payment_reference IS null
+
+```
+B1: amount + date + (customer_name if not null)
+    --> 1 match: return "B1"
+    --> 0 or 2+: go to B2
+
+B2: customer_name + amount
+    --> SKIPPED if customer_name is null
+    --> 1 match: return "B2"
+    --> 0 or 2+: go to B3
+
+B3: customer_name + date
+    --> SKIPPED if customer_name is null
+    --> 1 match: return "B3"
+    --> 0 or 2+: go to B4
+
+B4: amount only (last resort, no customer_name needed)
+    --> SKIPPED if total_amount is null
+    --> 1 match: return "B4"
+    --> 0 or 2+: NO MATCH (set receipt_no_match_reason)
+```
+
+### Output Fields When Matched (from `_extract_receipt_fields`)
+
+| Output Field              | Oracle CSV Column         | Processing                                  |
+| ------------------------- | ------------------------- | ------------------------------------------- |
+| `fusion_receipt_number`   | `RECEIPT_NUMBER`          | Stripped                                     |
+| `fusion_receipt_date`     | `RECEIPT_DATE`            | Converted to `YYYY/MM/DD`                    |
+| `fusion_receipt_amount`   | `RECEIPT_AMOUNT`          | Remove commas, parse as float                |
+| `fusion_customer_name`    | `BILL_CUSTOMER_NAME`      | Stripped                                     |
+| `fusion_customer_number`  | `BILL_CUSTOMER_NUMBER`    | Stripped                                     |
+| `fusion_currency`         | `CURRENCY`                | Stripped                                     |
+| `fusion_receipt_status`   | `RECEIPT_STATUS_CODE`     | Stripped                                     |
+| `fusion_applied_amount`   | `APPLIED_AMOUNT`          | Remove commas, parse as float                |
+
+### No Match Reason Format
+
+When all steps fail, `receipt_no_match_reason` is a semicolon-separated summary of every step attempted:
+
+```
+"A1: 0 rows matched (payment_reference substring + amount + customer_name); A2: 3 rows matched - ambiguous (...); A3: 0 rows matched (...); A4: skipped (no customer_name); A5: skipped (no customer_name); A6: 0 rows matched (amount + date); A7: 2 rows matched - ambiguous (amount only)"
+```
+
+Each step reports one of:
+- `"<step>: 0 rows matched (<criteria>)"` -- no rows matched
+- `"<step>: N rows matched - ambiguous (<criteria>)"` -- multiple rows matched
+- `"<step>: skipped (no customer_name)"` -- step requires customer_name but it's null
+- `"<step>: skipped (no total_amount)"` -- step requires total_amount but it's null
+- `"<step>: skipped (no total_amount, payment_date)"` -- step requires fields that are null
+
+### Receipt Match Reason Format
+
+| Scenario | Example `receipt_match_reason`                                               |
+| -------- | ---------------------------------------------------------------------------- |
+| A1       | `"Matched by payment_reference substring + amount + customer_name"`          |
+| A2       | `"Matched by payment_reference substring + customer_name"`                   |
+| A3       | `"Matched by payment_reference substring + amount + date + customer_name"`   |
+| A4       | `"Matched by customer_name + amount"`                                        |
+| A5       | `"Matched by customer_name + date"`                                          |
+| A6       | `"Matched by amount + date"`                                                 |
+| A7       | `"Matched by amount only"`                                                   |
+| B1       | `"Matched by amount + date + customer_name"`                                 |
+| B2       | `"Matched by customer_name + amount"`                                        |
+| B3       | `"Matched by customer_name + date"`                                          |
+| B4       | `"Matched by amount only"`                                                   |
+
+Note: For A1, A2, A3, B1 -- `"+ customer_name"` is only included if customer_name was provided.
+
+---
+
+## 9. Invoice Matching (`matching.py`) -- Rule 3
+
+**Goal:** Find `fusion_invoice_number`, `fusion_invoice_date`, `fusion_invoice_amount`, `fusion_invoice_type`, `fusion_invoice_status` for each invoice line.
+
+Runs for **each invoice line independently**. Steps are tried in order -- stops at first success.
+
+### Step 0 -- No invoice_number (date + amount + customer fallback)
+
+**Condition:** `invoice_number` is NULL (empty or not provided)
+
+**Additional condition:** All three of `customer_name`, `invoice_date`, and `invoice_amount` must be provided. If any is missing, Step 0 returns no match immediately.
+
+```
+BILL_CUSTOMER_NAME == customer_name  (case-insensitive, exact)
+AND TRANSACTION_DATE == invoice_date  (normalized date comparison)
+AND TOTAL_AMOUNTS == invoice_amount   (within +/-0.005)
+```
+
+- **1 match** --> Populate fusion fields, `invoice_match_scenario="0"` --> **STOP**
+- **0 or 2+** --> ALL fusion fields = `null`, `invoice_match_scenario=null`
+
+### Step 1a -- Exact match on invoice_number only
+
+```
+TRANSACTION_NUMBER == invoice_number  (case-insensitive, exact)
+```
+
+- **1 match** --> Populate fusion fields, `invoice_match_scenario="1a"` --> **STOP**
+- **0 or 2+** --> Go to Step 1a-sub
+
+### Step 1a-sub -- Substring match on invoice_number + amount
+
+```
+input's invoice_number appears INSIDE row's TRANSACTION_NUMBER
+    (case-insensitive, substring)
+AND abs(TOTAL_AMOUNTS) matches abs(invoice_amount)  (within +/-0.005)
+```
+
+- **1 match** --> Populate fusion fields, `invoice_match_scenario="1a-sub"` --> **STOP**
+- **0 or 2+** --> Go to Step 1b
+
+### Step 1b -- Exact match on invoice_number + date + amount
+
+**Condition:** `invoice_date` is provided
+
+```
+TRANSACTION_NUMBER == invoice_number  (case-insensitive, exact)
+AND TRANSACTION_DATE == invoice_date  (normalized date comparison)
+AND TOTAL_AMOUNTS == invoice_amount   (within +/-0.005)
+```
+
+- **1 match** --> Populate fusion fields, `invoice_match_scenario="1b"` --> **STOP**
+- **0 or 2+** --> Go to Step 2
+
+### Step 2 -- Match by customer_invoice_number + date + amount
+
+**Condition:** `customer_invoice_number` is provided AND `invoice_date` is provided
+
+```
+TRANSACTION_NUMBER == customer_invoice_number  (case-insensitive, exact)
+AND TRANSACTION_DATE == invoice_date            (normalized date comparison)
+AND TOTAL_AMOUNTS == invoice_amount             (within +/-0.005)
+```
+
+- **1 match** --> Populate fusion fields, `invoice_match_scenario="2"` --> **STOP**
+- **0 or 2+** --> Go to Step 3
+
+### Step 3 -- Substring fallback + date + amount
+
+**Condition:** `invoice_date` is provided
+
+```
+input's invoice_number appears INSIDE row's TRANSACTION_NUMBER
+    (case-insensitive, substring)
+AND TRANSACTION_DATE == invoice_date  (normalized date comparison)
+AND TOTAL_AMOUNTS == invoice_amount   (within +/-0.005)
+```
+
+- **1 match** --> Populate fusion fields, `invoice_match_scenario="3"` --> **STOP**
+- **0 or 2+** --> ALL fusion fields = `null`, `invoice_match_scenario=null`
+
+### Invoice Match Output Fields
+
+| Output Field              | Oracle CSV Column      | Processing                            |
+| ------------------------- | ---------------------- | ------------------------------------- |
+| `fusion_invoice_number`   | `TRANSACTION_NUMBER`   | Stripped                              |
+| `fusion_invoice_date`     | `TRANSACTION_DATE`     | Converted to `YYYY/MM/DD`            |
+| `fusion_invoice_amount`   | `TOTAL_AMOUNTS`        | Remove commas, parse as float         |
+| `fusion_invoice_type`     | `INVOICE_TYPE`         | Stripped, empty -> null               |
+| `fusion_invoice_status`   | `INVOICE_STATUS`       | Stripped, empty -> null               |
+
+### Invoice Match Reason Format
+
+| Step     | `invoice_match_reason`                                         |
+| -------- | -------------------------------------------------------------- |
+| 0        | `"Matched by date + amount + customer_name"`                   |
+| 1a       | `"Matched by exact invoice_number"`                            |
+| 1a-sub   | `"Matched by substring invoice_number + amount"`               |
+| 1b       | `"Matched by exact invoice_number + date + amount"`            |
+| 2        | `"Matched by customer_invoice_number + date + amount"`         |
+| 3        | `"Matched by substring invoice_number + date + amount"`        |
+
+---
+
+## 10. Complete Flow for POST /reports/match
+
+```
+1. Input: ReceiptRecord JSON (customer_name, payment_reference, invoices[], etc.)
+           |
+           v
+2. SUB 1: Fetch BOTH reports in PARALLEL (ThreadPoolExecutor, max_workers=2)
+   - Receipt report: cache check --> Oracle BIP (no params = UNAPP/UNID only)
+   - Invoice report: cache check --> Oracle BIP (no params = all invoices)
+           |
+           v
+3. Receipt matching SUB 1 (unapplied receipts):
+   - payment_reference provided: A1 --> A2 --> A3 --> A4 --> A5 --> A6 --> A7
+   - payment_reference is null:  B1 --> B2 --> B3 --> B4
+           |
+           v
+4. If receipt SUB 1 found NO match:
+   --> SUB 2: Fetch applied receipts (single SOAP param, sequential fallback)
+   --> Re-run receipt matching A1-A7 or B1-B4 on applied rows
+   --> Combine no-match reasons: "Unapplied: ... | Applied: ..."
+           |
+           v
+5. Invoice matching per line:
+   For EACH invoice in record.invoices:
+     a) SUB 1: Try cached invoice rows
+        - invoice_number is null: Step 0
+        - invoice_number provided: Step 1a --> 1a-sub --> 1b --> 2 --> 3
+     b) If SUB 1 found NO match:
+        --> SUB 2: Fetch filtered invoices (single SOAP param, sequential fallback)
+        --> Re-run Steps 0-3 on filtered rows
+        --> Combine: "Cached: ... | Filtered: ..."
+           |
+           v
+6. Build MatchedRecord combining:
+   - All original input fields (passed through unchanged)
+   - Receipt fusion fields (from step 3/4)
+   - Invoice fusion fields for each invoice (from step 5)
+           |
+           v
+7. Return as JSON (all fields always present, null when no match)
+```
+
+---
+
+## 11. Amount Matching Logic
+
+Used by both receipt and invoice matching. **Compares absolute values** because Oracle stores credit memos as negative amounts.
+
+```python
+If expected amount is null  --> return False (no match possible)
+
+Parse CSV value: remove commas, convert to float
+Compare: abs(abs(parsed) - abs(expected)) < 0.005
+```
+
+| CSV Value       | Input Value | abs Difference | Match? |
+| --------------- | ----------- | -------------- | ------ |
+| `"5,000.00"`    | `5000.0`    | `0.000`        | YES    |
+| `"-123.65"`     | `123.65`    | `0.000`        | YES    |
+| `"4999.998"`    | `5000.0`    | `0.002`        | YES    |
+| `"4999.99"`     | `5000.0`    | `0.010`        | NO     |
+| `"-404.86"`     | `404.86`    | `0.000`        | YES    |
+| `"404.864"`     | `404.86`    | `0.004`        | YES    |
+| `"404.87"`      | `404.86`    | `0.010`        | NO     |
+
+Tolerance is `AMOUNT_TOLERANCE = 0.005` (hardcoded in `config.py`).
+
+---
+
+## 12. Date Handling Logic
+
+All date comparisons normalize both sides to `YYYY-MM-DD` (internal format) before comparing, so any format on either side works.
+
+### Supported Input Formats (`_normalize_date`)
+
+| Input Format              | Example                              | Normalized       |
+| ------------------------- | ------------------------------------ | ---------------- |
+| `YYYY-MM-DDThh:mm:ss`    | `2026-02-26T00:00:00.000+00:00`     | `2026-02-26`     |
+| `YYYY-MM-DD`              | `2026-05-15`                         | `2026-05-15`     |
+| `YYYY/MM/DD`              | `2026/05/15`                         | `2026-05-15`     |
+| `DD-MM-YYYY`              | `15-05-2026`                         | `2026-05-15`     |
+| `DD/MM/YYYY`              | `15/05/2026`                         | `2026-05-15`     |
+| `MM-DD-YYYY` (month > 12) | `05-15-2026`                        | `2026-05-15`     |
+| `DD-Mon-YYYY`             | `15-May-2026`                        | `2026-05-15`     |
+| `DD-MON-YYYY`             | `15-MAY-2026`                        | `2026-05-15`     |
+| `DD-Mon-YY`               | `15-May-26`                          | `2026-05-15`     |
+
+**ISO 8601 support:** Dates like `2026-02-26T00:00:00.000+00:00` (from Oracle) are parsed by stripping the time portion.
+
+**Two-digit year rule:** Years < 100 are treated as 2000+year (e.g., `26` -> `2026`).
+
+**Ambiguity guard for `DD-MM-YYYY` vs `MM-DD-YYYY`:**
+- If first part > 12 and second <= 12: treat as DD-MM-YYYY (e.g., `15-05-2026`)
+- If second part > 12 and first <= 12: treat as MM-DD-YYYY (e.g., `05-15-2026`)
+- If both parts <= 12: ambiguous, default to DD-MM-YYYY (e.g., `01-02-2025` = Feb 1)
+
+### Date Comparison (`_dates_match`)
+
+- If either date is null/empty -> returns `False` (no match)
+- Both sides are normalized to `YYYY-MM-DD` and compared as strings
+
+### API Response Format (`_format_date_for_output`)
+
+All fusion dates in the response are returned as `YYYY/MM/DD` (e.g., `2026/05/15`).
+
+---
+
+## 13. API Endpoints (`main.py`)
+
+### Application Setup
+
+- **Framework:** FastAPI v3.0.0
+- **CORS:** Fully open -- `allow_origins=["*"]`, `allow_methods=["*"]`, `allow_headers=["*"]`
+- **Logging:** Level `INFO`, format `%(asctime)s  %(levelname)-8s  %(name)s  %(message)s`
+- **Run command:** `uvicorn main:app --reload --port 8000`
+
+### Endpoint Reference
+
+| Endpoint                      | Method | Description                                      |
+| ----------------------------- | ------ | ------------------------------------------------ |
+| `/reports/match`              | POST   | Validate a single remittance against Oracle       |
+| `/reports/search`             | GET    | Search report data by customer or invoice         |
+| `/reports/download/receipt`   | GET    | Download full receipt report as CSV file          |
+| `/reports/download/invoice`   | GET    | Download full invoice report as CSV file          |
+| `/cache/info`                 | GET    | Check current cache state (age, row counts)       |
+| `/cache/clear`                | POST   | Force-clear the in-memory cache                   |
+| `/health`                     | GET    | Health check -- returns `{"status": "ok"}`        |
+
+### POST /reports/match
+
+- **Input:** `ReceiptRecord` JSON body
+- **Output:** `MatchedRecord` JSON (all fields always present, null when no match)
+- **Process:** Two-step cascading -- SUB 1 (cached) then SUB 2 (filtered) if needed
+
+### GET /reports/search
+
+Query parameters:
+- `customer` (string, optional) -- substring match (case-insensitive) on `BILL_CUSTOMER_NAME`
+- `invoice` (string, optional) -- substring match (case-insensitive) on `TRANSACTION_NUMBER`
+
+Response:
+```json
+{
+  "receipt_matches": [],
+  "invoice_matches": [],
+  "total_receipts": 1500,
+  "total_invoices": 3200
+}
+```
+
+Results capped at 10 per category.
+
+### GET /reports/download/receipt & /reports/download/invoice
+
+- Fetches report rows (from cache or Oracle)
+- Converts to CSV using `csv.DictWriter`
+- Returns as `StreamingResponse` with:
+  - Encoding: `utf-8-sig` (BOM for Excel compatibility)
+  - Content-Type: `text/csv`
+  - Content-Disposition: `attachment; filename=receipt_report.csv` (or `invoice_report.csv`)
+
+---
+
+## 14. Error Handling & HTTP Status Codes
+
+| HTTP Status | Condition                                                  | Source Exception  |
+| ----------- | ---------------------------------------------------------- | ----------------- |
+| `200`       | Successful match/search/download                           | --                |
+| `401`       | Invalid Oracle credentials (HTTP 401 or SOAP auth fault)   | `AuthError`       |
+| `500`       | Generic exception in search/download                       | `Exception`       |
+| `502`       | Oracle BIP unavailable, SOAP fault, or CSV parsing failure | `ReportError`     |
+
+---
+
+## 15. Dependencies (`requirements.txt`)
+
+| Package          | Minimum Version | Purpose                                  |
+| ---------------- | --------------- | ---------------------------------------- |
+| `fastapi`        | `>=0.115.0`     | Web framework & API                      |
+| `uvicorn`        | `>=0.30.0`      | ASGI server                              |
+| `pydantic`       | `>=2.9.0`       | Data validation & serialization          |
+| `requests`       | `>=2.32.3`      | HTTP client for Oracle SOAP calls        |
+| `python-dotenv`  | `>=1.0.0`       | Load `.env` file into environment        |
+
+---
+
+## 16. File Structure
+
+```
+VALIDATION 5/
+  .env                  -- Environment variables (Oracle credentials, config)
+  .gitignore            -- Excludes .env, __pycache__, venv, etc. from version control
+  config.py             -- Loads .env, defines constants
+  models.py             -- Pydantic input/output models (with fusion_invoice_type, fusion_invoice_status)
+  cache.py              -- In-memory cache with TTL
+  client.py             -- Oracle BIP SOAP client (with XML escaping, generic params)
+  reports.py            -- Report fetching, CSV parsing, sequential SOAP param fallback
+  matching.py           -- Receipt matching (A1-A7/B1-B4) + Invoice matching (0-3)
+  main.py               -- FastAPI app with two-step cascading (SUB 1 -> SUB 2)
+  requirements.txt      -- Python dependencies
+  flowchart.html        -- Interactive flow diagram
+  Validation_Rules.txt  -- This file
+  README.md             -- Project overview
+```
