@@ -1,0 +1,13 @@
+.git
+.gitignore
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+.vscode/
+README.md
+flowchart.html
+Validation_Rules.txt
+Dockerfile
+.dockerignore
